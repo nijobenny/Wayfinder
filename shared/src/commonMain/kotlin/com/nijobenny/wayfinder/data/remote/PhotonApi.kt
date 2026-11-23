@@ -1,10 +1,12 @@
 package com.nijobenny.wayfinder.data.remote
 
+import com.nijobenny.wayfinder.domain.model.LatLng
 import com.nijobenny.wayfinder.domain.model.Place
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /** Photon (photon.komoot.io): free OpenStreetMap geocoding, no API key. Responses are GeoJSON. */
@@ -15,6 +17,18 @@ class PhotonApi(private val client: HttpClient) {
             parameter("lat", latitude)
             parameter("lon", longitude)
             parameter("limit", 1)
+        }.body()
+
+    suspend fun search(query: String, near: LatLng?, osmTag: String? = null, limit: Int = 10): PhotonResponse =
+        client.get("https://photon.komoot.io/api/") {
+            parameter("q", query)
+            parameter("limit", limit)
+            parameter("lang", "en")
+            if (near != null) {
+                parameter("lat", near.latitude)
+                parameter("lon", near.longitude)
+            }
+            if (osmTag != null) parameter("osm_tag", osmTag)
         }.body()
 }
 
@@ -41,6 +55,7 @@ data class PhotonProperties(
     val county: String? = null,
     val state: String? = null,
     val country: String? = null,
+    @SerialName("osm_value") val osmValue: String? = null,
 )
 
 /** Turns a Photon feature into a readable [Place]. Falls back to the queried coordinate. */
@@ -48,7 +63,13 @@ fun PhotonFeature.toPlace(fallbackLatitude: Double, fallbackLongitude: Double): 
     val p = properties
     val street = listOfNotNull(p.street, p.housenumber).joinToString(" ").ifBlank { null }
     val title = p.name ?: street ?: p.locality ?: p.district ?: p.city ?: p.county ?: "Unnamed place"
-    val subtitle = listOfNotNull(p.locality ?: p.district, p.city ?: p.county, p.state, p.country)
+    val subtitle = listOfNotNull(
+        street.takeIf { p.name != null },
+        p.locality ?: p.district,
+        p.city ?: p.county,
+        p.state,
+        p.country,
+    )
         .distinct()
         .filter { it != title }
         .joinToString(", ")
@@ -58,5 +79,6 @@ fun PhotonFeature.toPlace(fallbackLatitude: Double, fallbackLongitude: Double): 
         subtitle = subtitle,
         latitude = coords?.getOrNull(1) ?: fallbackLatitude,
         longitude = coords?.getOrNull(0) ?: fallbackLongitude,
+        category = p.osmValue,
     )
 }

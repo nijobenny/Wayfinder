@@ -1,13 +1,18 @@
 package com.nijobenny.wayfinder.ui.map
 
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import org.maplibre.compose.layers.LocationIndicatorDefaults
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -16,7 +21,6 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,6 +43,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,20 +55,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.nijobenny.wayfinder.domain.model.Category
+import com.nijobenny.wayfinder.domain.model.LatLng
+import com.nijobenny.wayfinder.domain.model.SavedPlace
 import com.nijobenny.wayfinder.domain.model.ThemeMode
-import com.nijobenny.wayfinder.domain.util.GeoMath
+import com.nijobenny.wayfinder.domain.model.UserSettings
+import com.nijobenny.wayfinder.domain.util.RouteTracker
 import com.nijobenny.wayfinder.ui.components.AutoThemeGlyph
 import com.nijobenny.wayfinder.ui.components.GlassPanel
 import com.nijobenny.wayfinder.ui.components.LocateGlyph
 import com.nijobenny.wayfinder.ui.components.MapButton
 import com.nijobenny.wayfinder.ui.components.MoonGlyph
-import com.nijobenny.wayfinder.ui.components.PinGlyph
 import com.nijobenny.wayfinder.ui.components.SearchGlyph
 import com.nijobenny.wayfinder.ui.components.SunGlyph
 import com.nijobenny.wayfinder.ui.components.bounceClick
@@ -72,10 +80,16 @@ import com.nijobenny.wayfinder.ui.theme.LocalWayfinderColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.maplibre.compose.camera.CameraAnimation
+import org.maplibre.compose.camera.CameraFit
 import org.maplibre.compose.camera.CameraMoveReason
 import org.maplibre.compose.camera.CameraPosition
 import org.maplibre.compose.camera.CameraUpdate
 import org.maplibre.compose.expressions.dsl.const
+import org.maplibre.compose.expressions.value.LineCap
+import org.maplibre.compose.expressions.value.LineJoin
+import org.maplibre.compose.interaction.ClickResult
+import org.maplibre.compose.interaction.MapInteractions
+import org.maplibre.compose.layers.LineLayer
 import org.maplibre.compose.layers.LocationIndicatorLayer
 import org.maplibre.compose.location.LocationPermission
 import org.maplibre.compose.location.LocationState
@@ -88,62 +102,183 @@ import org.maplibre.compose.map.MaplibreMap
 import org.maplibre.compose.map.rememberMapState
 import org.maplibre.compose.overlay.MapOverlay
 import org.maplibre.compose.overlay.include
+import org.maplibre.compose.sources.GeoJsonData
+import org.maplibre.compose.sources.rememberGeoJsonSource
 import org.maplibre.compose.style.BaseStyle
+import org.maplibre.compose.style.TransitionOptions
+import org.maplibre.compose.util.DpPadding
+import org.maplibre.spatialk.geojson.BoundingBox
+import org.maplibre.spatialk.geojson.Feature
+import org.maplibre.spatialk.geojson.LineString
 import org.maplibre.spatialk.geojson.Position
+import org.maplibre.spatialk.units.Bearing
+import org.maplibre.spatialk.units.extensions.degrees
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /** Kochi, Kerala: where the camera starts before the first location fix. */
 private val StartPosition = Position(latitude = 9.9816, longitude = 76.2999)
 
+private fun LatLng.toPosition() = Position(latitude = latitude, longitude = longitude)
+
 @Composable
 fun MapScreen(
-    placeState: PlaceUiState,
-    themeMode: ThemeMode,
-    onCycleTheme: () -> Unit,
-    onLocation: (latitude: Double, longitude: Double) -> Unit,
+    state: MapUiState,
+    settings: UserSettings,
+    saved: List<SavedPlace>,
+    viewModel: MapViewModel,
+    onOpenSearch: (addStop: Boolean) -> Unit,
+    onCategory: (Category) -> Unit,
+    onOpenProfile: () -> Unit,
 ) {
     val colors = LocalWayfinderColors.current
     val density = LocalDensity.current
+    val haptics = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
 
     val locationState = rememberLocationState(
         provider = rememberDefaultLocationProvider(),
         headingProvider = rememberDefaultHeadingProvider(),
     )
+
+    val nav = state.navigation
+    val readyRoute = (state.route as? RouteUiState.Ready)?.route
+    val tracker = remember(readyRoute) { readyRoute?.let { RouteTracker(it) } }
+
+    // Animate the route line being drawn whenever a new route arrives.
+    val reveal = remember { Animatable(0f) }
+    LaunchedEffect(readyRoute) {
+        if (readyRoute != null) {
+            reveal.snapTo(0f)
+            reveal.animateTo(1f, tween(1100, easing = FastOutSlowInEasing))
+        }
+    }
+
+    val routeLine: List<Position> = when {
+        tracker == null -> emptyList()
+        nav != null -> tracker.remainingGeometry(nav.progress.traveledMeters).map { it.toPosition() }
+        else -> tracker.partialGeometry(reveal.value).map { it.toPosition() }
+    }
+
     val mapState = rememberMapState(
         baseStyle = BaseStyle.Uri(colors.mapStyleUri),
         initialCameraPosition = CameraPosition(center = StartPosition, zoom = 11.5),
     ) {
-        LocationIndicatorLayer(
-            id = "user",
-            locationState = locationState,
-            bearingAccuracyColor = const(Brand.Sky.copy(alpha = 0.30f)),
-            accuracyRadiusColor = Brand.Sky.copy(alpha = 0.14f),
-            accuracyRadiusBorderColor = Brand.Sky.copy(alpha = 0.6f),
-        )
-    }
-
-    // Follow the user until they pan the map themselves.
-    var following by remember { mutableStateOf(true) }
-    LaunchedEffect(mapState) {
-        snapshotFlow { mapState.cameraMoveReason }.collect { reason ->
-            if (reason == CameraMoveReason.Gesture) following = false
+        if (routeLine.size >= 2) {
+            val routeSource = rememberGeoJsonSource(GeoJsonData.Features(Feature(geometry = LineString(routeLine), properties = null)))
+            LineLayer(
+                id = "route-casing",
+                source = routeSource,
+                color = const(if (colors.isDark) Color(0xFF0B1220) else Color.White),
+                width = const(11.dp),
+                cap = const(LineCap.Round),
+                join = const(LineJoin.Round),
+            )
+            LineLayer(
+                id = "route",
+                source = routeSource,
+                color = const(Brand.Sky),
+                width = const(6.dp),
+                cap = const(LineCap.Round),
+                join = const(LineJoin.Round),
+            )
+        }
+        if (nav != null && nav.simulated) {
+            LocationIndicatorLayer(
+                id = "demo-vehicle",
+                location = nav.progress.position.toPosition(),
+                bearing = Bearing.North + nav.progress.bearing.degrees,
+                locationTransition = TransitionOptions(duration = Duration.ZERO),
+                bearingAccuracyColor = const(Brand.Sky.copy(alpha = 0.3f)),
+                accuracyRadiusColor = Brand.Sky.copy(alpha = 0.14f),
+                accuracyRadiusBorderColor = Brand.Sky.copy(alpha = 0.6f),
+                topImage = LocationIndicatorDefaults.topImage(color = Brand.Indigo, borderColor = Color.White),
+                bearingImage = LocationIndicatorDefaults.bearingImage(color = Brand.Indigo),
+            )
+        } else {
+            LocationIndicatorLayer(
+                id = "user",
+                locationState = locationState,
+                bearingAccuracyColor = const(Brand.Sky.copy(alpha = 0.30f)),
+                accuracyRadiusColor = Brand.Sky.copy(alpha = 0.14f),
+                accuracyRadiusBorderColor = Brand.Sky.copy(alpha = 0.6f),
+                topImage = LocationIndicatorDefaults.topImage(color = Brand.Sky, borderColor = Color.White),
+                bearingImage = LocationIndicatorDefaults.bearingImage(color = Brand.Sky),
+            )
         }
     }
-    LocationTrackingEffect(locationState = locationState, enabled = following, trackBearing = false) {
+
+    // ---- Camera behaviour -----------------------------------------------------------------
+
+    var following by remember { mutableStateOf(true) }
+    LaunchedEffect(mapState) {
+        snapshotFlow { mapState.cameraMoveReason }.collect { if (it == CameraMoveReason.Gesture) following = false }
+    }
+    LocationTrackingEffect(locationState = locationState, enabled = following && nav == null && state.sheet == Sheet.Explore, trackBearing = false) {
         mapState.animateCamera(
             update = CameraUpdate(center = currentLocation.position, zoom = maxOf(mapState.cameraPosition.zoom, 15.0)),
             animation = CameraAnimation.Ease { duration = 900.milliseconds },
         )
     }
 
-    // Look up the place name as the user moves.
     val lastLocation = locationState.lastLocation
     LaunchedEffect(lastLocation) {
-        lastLocation?.let { onLocation(it.position.latitude, it.position.longitude) }
+        lastLocation?.let { viewModel.onLocation(it.position.latitude, it.position.longitude) }
     }
 
-    // Briefly show which theme was picked.
+    var panelHeightPx by remember { mutableIntStateOf(0) }
+    val panelHeight = with(density) { panelHeightPx.toDp() }
+
+    // Fly to a selected place.
+    LaunchedEffect(state.selected) {
+        val place = state.selected ?: return@LaunchedEffect
+        following = false
+        mapState.animateCamera(
+            update = CameraUpdate(center = Position(latitude = place.latitude, longitude = place.longitude), zoom = 15.5, bearing = 0.0, pitch = 0.0),
+            animation = CameraAnimation.Fly { duration = 1.2.seconds },
+        )
+    }
+
+    // Frame the whole route when it's ready.
+    LaunchedEffect(readyRoute, nav == null) {
+        val route = readyRoute ?: return@LaunchedEffect
+        if (nav != null) return@LaunchedEffect
+        following = false
+        val lats = route.geometry.map { it.latitude }
+        val lons = route.geometry.map { it.longitude }
+        mapState.animateCameraToBounds(
+            boundingBox = BoundingBox(west = lons.min(), south = lats.min(), east = lons.max(), north = lats.max()),
+            fit = CameraFit(fitPadding = DpPadding(left = 48.dp, top = 120.dp, right = 48.dp, bottom = 40.dp)),
+        )
+    }
+
+    // Navigation camera: tilted, heading-up, puck in the lower third.
+    LaunchedEffect(nav?.progress) {
+        val n = nav ?: return@LaunchedEffect
+        mapState.animateCamera(
+            update = CameraPosition(
+                center = n.progress.position.toPosition(),
+                zoom = 17.0,
+                bearing = n.progress.bearing,
+                pitch = 55.0,
+                padding = DpPadding(top = 320.dp),
+            ).toCameraUpdate(),
+            animation = CameraAnimation.Ease { duration = if (n.simulated) MapViewModel.TICK_MS.milliseconds else 900.milliseconds },
+        )
+    }
+    var wasNavigating by remember { mutableStateOf(false) }
+    LaunchedEffect(nav == null) {
+        if (nav == null && wasNavigating) {
+            mapState.animateCamera(
+                update = CameraUpdate(pitch = 0.0, bearing = 0.0, zoom = 15.0, padding = DpPadding.Zero),
+                animation = CameraAnimation.Ease { duration = 800.milliseconds },
+            )
+        }
+        wasNavigating = nav != null
+    }
+
+    // Theme toast
     var themeToastKey by remember { mutableIntStateOf(0) }
     var showThemeToast by remember { mutableStateOf(false) }
     LaunchedEffect(themeToastKey) {
@@ -154,33 +289,68 @@ fun MapScreen(
         }
     }
 
-    val scope = rememberCoroutineScope()
-    var panelHeightPx by remember { mutableIntStateOf(0) }
-    val panelHeight = with(density) { panelHeightPx.toDp() }
-
-    Box(Modifier.fillMaxSize().background(colors.background)) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(colors.background)) {
+        val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        val sheetIsTall = panelHeight > maxHeight * 0.45f
         MaplibreMap(
             modifier = Modifier.fillMaxSize(),
             state = mapState,
-            viewportInsets = PaddingValues(bottom = panelHeight + 16.dp),
-            overlay = { include(MapOverlay.AttributionOnly) },
+            viewportInsets = PaddingValues(bottom = panelHeight + navBarBottom + 32.dp),
+            interactions = MapInteractions {
+                callbacks {
+                    longClick {
+                        onEvent { event ->
+                            val p = event.position
+                            if (p != null && nav == null) {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.dropPin(p.latitude, p.longitude)
+                            }
+                            ClickResult.Consume
+                        }
+                    }
+                }
+            },
+            overlay = {
+                include(MapOverlay.AttributionOnly)
+                val selected = state.selected
+                if (selected != null && nav == null) {
+                    key(selected.key) {
+                        DropPin(label = null, modifier = Modifier.placedAt(Position(latitude = selected.latitude, longitude = selected.longitude), Alignment.BottomCenter))
+                    }
+                }
+                state.stops.forEachIndexed { i, stop ->
+                    key("stop-" + stop.key + "-" + i) {
+                        StopMarker(
+                            number = i + 1,
+                            isFinal = i == state.stops.lastIndex,
+                            modifier = Modifier.placedAt(Position(latitude = stop.latitude, longitude = stop.longitude), Alignment.BottomCenter),
+                        )
+                    }
+                }
+            },
         )
 
-        // Soft scrim so the status bar stays readable over any map content.
+        // Readability scrim behind the status bar.
         Box(
-            Modifier
-                .fillMaxWidth()
-                .height(120.dp)
+            Modifier.fillMaxWidth().height(130.dp)
                 .background(Brush.verticalGradient(listOf(colors.background.copy(alpha = 0.75f), Color.Transparent)))
         )
 
+        // Top: search bar, or turn-by-turn banner while navigating.
         Column(
-            modifier = Modifier
-                .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            SearchBar()
+            AnimatedContent(
+                targetState = nav != null,
+                transitionSpec = {
+                    (fadeIn(tween(300)) + slideInVertically(tween(350)) { -it }) togetherWith (fadeOut(tween(200)) + slideOutVertically(tween(250)) { -it })
+                },
+                label = "top",
+            ) { navigating ->
+                if (navigating && nav != null) NavigationBanner(nav, settings.units)
+                else SearchBar(initials = initialsOf(settings.displayName), onClick = { onOpenSearch(false) }, onAvatar = onOpenProfile)
+            }
             Spacer(Modifier.height(10.dp))
             AnimatedVisibility(
                 visible = showThemeToast,
@@ -189,7 +359,7 @@ fun MapScreen(
             ) {
                 GlassPanel(shape = RoundedCornerShape(50), elevation = 8.dp) {
                     Text(
-                        when (themeMode) {
+                        when (settings.themeMode) {
                             ThemeMode.System -> "Following system theme"
                             ThemeMode.Light -> "Light mode"
                             ThemeMode.Dark -> "Dark mode"
@@ -202,68 +372,115 @@ fun MapScreen(
             }
         }
 
-        // Floating controls, kept just above the bottom panel.
+        // Floating controls just above the sheet.
         Column(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .navigationBarsPadding()
-                .padding(end = 16.dp, bottom = panelHeight + 28.dp),
+            modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 16.dp, bottom = panelHeight + 28.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            MapButton(onClick = {
-                onCycleTheme()
-                themeToastKey++
-            }) {
-                AnimatedContent(
-                    targetState = themeMode,
-                    transitionSpec = {
-                        (fadeIn(tween(250)) + scaleIn(initialScale = 0.4f, animationSpec = tween(350))) togetherWith
-                            (fadeOut(tween(200)) + scaleOut(targetScale = 0.4f, animationSpec = tween(200)))
-                    },
-                    label = "themeIcon",
-                ) { mode ->
-                    when (mode) {
-                        ThemeMode.System -> AutoThemeGlyph(colors.textPrimary)
-                        ThemeMode.Light -> SunGlyph(Brand.Amber)
-                        ThemeMode.Dark -> MoonGlyph(Brand.Sky)
+            AnimatedVisibility(visible = nav == null && !sheetIsTall, enter = fadeIn() + scaleIn(), exit = fadeOut() + scaleOut()) {
+                MapButton(onClick = {
+                    viewModel.cycleThemeMode()
+                    themeToastKey++
+                }) {
+                    AnimatedContent(
+                        targetState = settings.themeMode,
+                        transitionSpec = {
+                            (fadeIn(tween(250)) + scaleIn(initialScale = 0.4f, animationSpec = tween(350))) togetherWith
+                                (fadeOut(tween(200)) + scaleOut(targetScale = 0.4f, animationSpec = tween(200)))
+                        },
+                        label = "themeIcon",
+                    ) { mode ->
+                        when (mode) {
+                            ThemeMode.System -> AutoThemeGlyph(colors.textPrimary)
+                            ThemeMode.Light -> SunGlyph(Brand.Amber)
+                            ThemeMode.Dark -> MoonGlyph(Brand.Sky)
+                        }
                     }
                 }
             }
-            MapButton(onClick = {
-                following = true
-                val current = locationState.lastLocation?.position
-                if (current != null) {
-                    scope.launch {
-                        mapState.animateCamera(
-                            update = CameraUpdate(center = current, zoom = 16.0, bearing = 0.0, pitch = 0.0),
-                            animation = CameraAnimation.Fly { duration = 1.2.seconds },
-                        )
+            AnimatedVisibility(visible = nav == null && !sheetIsTall, enter = fadeIn() + scaleIn(), exit = fadeOut() + scaleOut()) {
+                MapButton(onClick = {
+                    following = true
+                    val current = locationState.lastLocation?.position
+                    if (current != null) {
+                        scope.launch {
+                            mapState.animateCamera(
+                                update = CameraUpdate(center = current, zoom = 16.0, bearing = 0.0, pitch = 0.0),
+                                animation = CameraAnimation.Fly { duration = 1.2.seconds },
+                            )
+                        }
+                    } else if (locationState.permission !is LocationPermission.Granted) {
+                        locationState.requestPermission()
                     }
-                } else if (locationState.permission !is LocationPermission.Granted) {
-                    locationState.requestPermission()
+                }) {
+                    LocateGlyph(if (following) Brand.Sky else colors.textPrimary, active = following)
                 }
-            }) {
-                LocateGlyph(if (following) Brand.Sky else colors.textPrimary, active = following)
             }
         }
 
-        BottomPanel(
-            locationState = locationState,
-            placeState = placeState,
+        // Bottom sheet that morphs between explore, place, planner and navigation.
+        GlassPanel(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
                 .padding(16.dp)
+                .fillMaxWidth()
+                .heightIn(max = maxHeight * 0.62f)
                 .onSizeChanged { panelHeightPx = it.height },
-        )
+            shape = RoundedCornerShape(28.dp),
+        ) {
+            val needsPermission = locationState.permission !is LocationPermission.Granted
+            AnimatedContent(
+                targetState = if (needsPermission && state.sheet == Sheet.Explore) null else state.sheet,
+                transitionSpec = {
+                    (fadeIn(tween(320)) + slideInVertically(tween(380, easing = FastOutSlowInEasing)) { it / 4 }) togetherWith fadeOut(tween(160))
+                },
+                label = "sheet",
+            ) { sheet ->
+                Box(Modifier.verticalScroll(rememberScrollState()).padding(20.dp)) {
+                    when (sheet) {
+                        null -> PermissionContent(locationState)
+                        Sheet.Explore -> ExploreSheet(state, saved, settings.units, onCategory = onCategory, onSavedPlace = viewModel::selectPlace)
+                        Sheet.Place -> state.selected?.let { place ->
+                            PlaceSheet(
+                                place = place,
+                                state = state,
+                                units = settings.units,
+                                isSaved = place.key in state.savedKeys,
+                                canAddStop = state.stops.isNotEmpty(),
+                                onDirections = { viewModel.directionsTo(place) },
+                                onAddStop = { viewModel.addStop(place) },
+                                onToggleSave = { viewModel.toggleSaved(place) },
+                                onClose = viewModel::clearSelection,
+                            )
+                        }
+                        Sheet.Planner -> PlannerSheet(
+                            state = state,
+                            units = settings.units,
+                            onMode = viewModel::setMode,
+                            onAddStop = { onOpenSearch(true) },
+                            onRemoveStop = viewModel::removeStop,
+                            onMoveStop = viewModel::moveStop,
+                            onStart = { viewModel.startNavigation(simulate = false) },
+                            onDemo = { viewModel.startNavigation(simulate = true) },
+                            onRetry = viewModel::requestRoute,
+                            onClose = viewModel::clearRoute,
+                        )
+                        Sheet.Navigation -> nav?.let { NavigationPanel(it, settings.units, onEnd = viewModel::stopNavigation) }
+                    }
+                }
+            }
+        }
     }
 }
 
-/** Search pill with rotating hints (search itself arrives in the next step). */
+private fun initialsOf(name: String): String =
+    name.split(" ").filter { it.isNotBlank() }.take(2).joinToString("") { it.first().uppercase() }.ifEmpty { "W" }
+
 @Composable
-private fun SearchBar() {
+private fun SearchBar(initials: String, onClick: () -> Unit, onAvatar: () -> Unit) {
     val colors = LocalWayfinderColors.current
-    val hints = remember { listOf("Where to?", "Search cafés, places, addresses", "Plan a route home") }
+    val hints = remember { listOf("Where to?", "Search cafés, places, addresses", "Plan a route with stops") }
     var hintIndex by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -271,59 +488,22 @@ private fun SearchBar() {
             hintIndex = (hintIndex + 1) % hints.size
         }
     }
-    GlassPanel(modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(28.dp)) {
-        Row(
-            modifier = Modifier.fillMaxSize().padding(start = 18.dp, end = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+    GlassPanel(modifier = Modifier.fillMaxWidth().height(56.dp).bounceClick(onClick = onClick), shape = RoundedCornerShape(28.dp)) {
+        Row(Modifier.fillMaxSize().padding(start = 18.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             SearchGlyph(colors.textMuted)
             Spacer(Modifier.width(12.dp))
             AnimatedContent(
                 targetState = hints[hintIndex],
                 transitionSpec = {
-                    (fadeIn(tween(300)) + slideInVertically(tween(300)) { it / 2 }) togetherWith
-                        (fadeOut(tween(200)) + slideOutVertically(tween(200)) { -it / 2 })
+                    (fadeIn(tween(300)) + slideInVertically(tween(300)) { it / 2 }) togetherWith (fadeOut(tween(200)) + slideOutVertically(tween(200)) { -it / 2 })
                 },
                 modifier = Modifier.weight(1f),
                 label = "hint",
-            ) { hint ->
-                Text(hint, style = MaterialTheme.typography.bodyLarge, color = colors.textMuted, maxLines = 1)
-            }
+            ) { hint -> Text(hint, style = MaterialTheme.typography.bodyLarge, color = colors.textMuted, maxLines = 1) }
             Box(
-                modifier = Modifier.size(40.dp).clip(CircleShape).background(Brand.Gradient),
+                Modifier.size(40.dp).clip(CircleShape).background(Brand.Gradient).bounceClick(onClick = onAvatar),
                 contentAlignment = Alignment.Center,
-            ) {
-                Text("NB", style = MaterialTheme.typography.labelLarge, color = Color.White, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
-
-private enum class PanelMode { NeedsPermission, Locating, Located }
-
-@Composable
-private fun BottomPanel(locationState: LocationState, placeState: PlaceUiState, modifier: Modifier = Modifier) {
-    val mode = when {
-        locationState.permission !is LocationPermission.Granted -> PanelMode.NeedsPermission
-        locationState.lastLocation == null -> PanelMode.Locating
-        else -> PanelMode.Located
-    }
-    GlassPanel(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
-        AnimatedContent(
-            targetState = mode,
-            transitionSpec = {
-                (fadeIn(tween(350)) + slideInVertically(tween(350, easing = FastOutSlowInEasing)) { it / 3 }) togetherWith
-                    fadeOut(tween(200))
-            },
-            label = "panel",
-        ) { panelMode ->
-            Box(Modifier.padding(20.dp)) {
-                when (panelMode) {
-                    PanelMode.NeedsPermission -> PermissionContent(locationState)
-                    PanelMode.Locating -> LocatingContent()
-                    PanelMode.Located -> LocatedContent(locationState, placeState)
-                }
-            }
+            ) { Text(initials, style = MaterialTheme.typography.labelLarge, color = Color.White, fontWeight = FontWeight.Bold) }
         }
     }
 }
@@ -334,157 +514,21 @@ private fun PermissionContent(locationState: LocationState) {
     val settings = rememberSystemSettingsLauncher()
     val permission = locationState.permission
     val mustUseSettings = permission is LocationPermission.NotGranted && permission.canRequest == false
-
     Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            PulsingPin()
-            Spacer(Modifier.width(16.dp))
-            Column {
-                Text("Find your way", style = MaterialTheme.typography.titleLarge, color = colors.textPrimary)
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    "Turn on location to see where you are and get directions.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.textMuted,
-                )
-            }
-        }
-        Spacer(Modifier.height(18.dp))
-        GradientButton(
+        Text("Find your way", style = MaterialTheme.typography.titleLarge, color = colors.textPrimary)
+        Spacer(Modifier.height(4.dp))
+        Text("Turn on location to see where you are, plan routes and navigate.", style = MaterialTheme.typography.bodyMedium, color = colors.textMuted)
+        Spacer(Modifier.height(16.dp))
+        com.nijobenny.wayfinder.ui.components.GradientButton(
             text = if (mustUseSettings) "Open settings" else "Enable location",
             onClick = {
                 if (mustUseSettings && settings.canOpenApplicationSettings) settings.openApplicationSettings()
                 else locationState.requestPermission()
             },
+            modifier = Modifier.fillMaxWidth(),
         )
     }
 }
 
-@Composable
-private fun LocatingContent() {
-    val colors = LocalWayfinderColors.current
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        RadarPulse()
-        Spacer(Modifier.width(16.dp))
-        Column {
-            Text("Finding you…", style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
-            Text("Getting a GPS fix", style = MaterialTheme.typography.bodyMedium, color = colors.textMuted)
-        }
-    }
-}
-
-@Composable
-private fun LocatedContent(locationState: LocationState, placeState: PlaceUiState) {
-    val colors = LocalWayfinderColors.current
-    val position = locationState.lastLocation?.position
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(Brand.Gradient),
-                contentAlignment = Alignment.Center,
-            ) {
-                PinGlyph(Color.White, holeColor = Brand.Sky)
-            }
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text("YOU ARE HERE", style = MaterialTheme.typography.labelMedium, color = Brand.Sky)
-                AnimatedContent(
-                    targetState = placeState,
-                    transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(150)) },
-                    contentKey = { (it as? PlaceUiState.Ready)?.place?.title ?: it::class.simpleName },
-                    label = "place",
-                ) { state ->
-                    when (state) {
-                        is PlaceUiState.Ready -> Column {
-                            Text(state.place.title, style = MaterialTheme.typography.titleLarge, color = colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            if (state.place.subtitle.isNotBlank()) {
-                                Text(state.place.subtitle, style = MaterialTheme.typography.bodyMedium, color = colors.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
-                        PlaceUiState.Error -> Text("Unknown place", style = MaterialTheme.typography.titleLarge, color = colors.textPrimary)
-                        else -> ShimmerLines()
-                    }
-                }
-            }
-        }
-        if (position != null) {
-            Spacer(Modifier.height(14.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                LiveDot()
-                Spacer(Modifier.width(8.dp))
-                Text("Live", style = MaterialTheme.typography.labelLarge, color = colors.textPrimary)
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    GeoMath.formatCoordinates(position.latitude, position.longitude),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = colors.textMuted,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun GradientButton(text: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(54.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(Brand.HorizontalGradient)
-            .bounceClick(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(text, style = MaterialTheme.typography.titleMedium, color = Color.White)
-    }
-}
-
-@Composable
-private fun PulsingPin() {
-    val transition = rememberInfiniteTransition(label = "pin")
-    val bob by transition.animateFloat(-3f, 3f, infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "bob")
-    Box(
-        modifier = Modifier.size(56.dp).clip(RoundedCornerShape(18.dp)).background(Brand.Gradient),
-        contentAlignment = Alignment.Center,
-    ) {
-        PinGlyph(Color.White, holeColor = Brand.Sky, size = 26.dp, modifier = Modifier.graphicsLayer { translationY = bob.dp.toPx() })
-    }
-}
-
-/** Expanding rings, like a radar sweep, while waiting for the first GPS fix. */
-@Composable
-private fun RadarPulse() {
-    val transition = rememberInfiniteTransition(label = "radar")
-    val progress by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(1600, easing = LinearEasing)), label = "radarProgress")
-    Canvas(Modifier.size(48.dp)) {
-        val maxR = size.minDimension / 2
-        listOf(0f, 0.5f).forEach { offset ->
-            val t = (progress + offset) % 1f
-            drawCircle(Brand.Sky.copy(alpha = (1f - t) * 0.5f), radius = maxR * t)
-        }
-        drawCircle(Brand.Sky, radius = maxR * 0.22f)
-        drawCircle(Color.White, radius = maxR * 0.1f)
-    }
-}
-
-@Composable
-private fun LiveDot() {
-    val transition = rememberInfiniteTransition(label = "live")
-    val pulse by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(1400, easing = LinearEasing)), label = "livePulse")
-    Canvas(Modifier.size(12.dp)) {
-        val r = size.minDimension / 2
-        drawCircle(Color(0xFF22C55E).copy(alpha = (1f - pulse) * 0.5f), radius = r * (0.5f + pulse * 0.5f))
-        drawCircle(Color(0xFF22C55E), radius = r * 0.45f)
-    }
-}
-
-@Composable
-private fun ShimmerLines() {
-    val colors = LocalWayfinderColors.current
-    val transition = rememberInfiniteTransition(label = "shimmer")
-    val alpha by transition.animateFloat(0.35f, 0.8f, infiniteRepeatable(tween(800), RepeatMode.Reverse), label = "shimmerAlpha")
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
-        Box(Modifier.fillMaxWidth(0.7f).height(18.dp).graphicsLayer { this.alpha = alpha }.clip(RoundedCornerShape(6.dp)).background(colors.surfaceHigh))
-        Box(Modifier.fillMaxWidth(0.5f).height(12.dp).graphicsLayer { this.alpha = alpha }.clip(RoundedCornerShape(6.dp)).background(colors.surfaceHigh))
-    }
-}
+@Suppress("unused")
+private val Linear = LinearEasing

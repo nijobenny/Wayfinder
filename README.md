@@ -7,7 +7,7 @@
 **Find your way, beautifully.**
 
 A premium navigation app built with **Kotlin Multiplatform** and **Compose Multiplatform**.
-Live location, a vector map and routing, with one shared codebase for Android and iOS.
+Search, multi-stop routing and turn-by-turn navigation on open map data, with one shared codebase for Android and iOS.
 
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.4-7F52FF?logo=kotlin&logoColor=white)
 ![Compose Multiplatform](https://img.shields.io/badge/Compose%20Multiplatform-1.12-4285F4?logo=jetpackcompose&logoColor=white)
@@ -17,7 +17,7 @@ Live location, a vector map and routing, with one shared codebase for Android an
 ![Koin](https://img.shields.io/badge/DI-Koin-F88909)
 [![CI](https://github.com/nijobenny/Wayfinder/actions/workflows/ci.yml/badge.svg)](https://github.com/nijobenny/Wayfinder/actions/workflows/ci.yml)
 
-🚧 *Actively developed, one feature per commit.*
+
 
 </div>
 
@@ -25,32 +25,62 @@ Live location, a vector map and routing, with one shared codebase for Android an
 
 ## 📱 Screenshots
 
-| Splash | App icon |
-|:---:|:---:|
-| <img src="screenshots/splash.png" width="200"/> | <img src="screenshots/icon-512.png" width="200"/> |
+| Live map | Nearby search | Place card | Trip planner |
+|:---:|:---:|:---:|:---:|
+| <img src="screenshots/map-light.png" width="190"/> | <img src="screenshots/search-nearby.png" width="190"/> | <img src="screenshots/place-dark.png" width="190"/> | <img src="screenshots/planner.png" width="190"/> |
 
-*Map screenshots coming soon.*
+| Turn-by-turn steps | Navigation (demo drive) | Night navigation | Dark map |
+|:---:|:---:|:---:|:---:|
+| <img src="screenshots/steps.png" width="190"/> | <img src="screenshots/navigation.png" width="190"/> | <img src="screenshots/navigation-dark.png" width="190"/> | <img src="screenshots/map-dark.png" width="190"/> |
+
+| Profile & achievements | Profile (light) | Settings | Splash |
+|:---:|:---:|:---:|:---:|
+| <img src="screenshots/profile.png" width="190"/> | <img src="screenshots/profile-light.png" width="190"/> | <img src="screenshots/settings.png" width="190"/> | <img src="screenshots/splash.png" width="190"/> |
 
 ## ✨ Features
 
-### 🗺 Map & location
-- **Vector map**: MapLibre with OpenFreeMap tiles. No API key and no billing, just open data from OpenStreetMap.
-- **Live location**: a branded location puck with an accuracy halo and heading, plus smooth camera follow that stops as soon as you pan the map.
-- **Locate-me button**: a "fly" camera animation back to you, with an icon that shows whether follow mode is on.
-- **"You are here" card**: reverse-geocodes your position into a readable place name with **Ktor** and the Photon API. Lookups are rate-friendly (only after you move 150 m) and cached.
-- **Permission flow**: a friendly onboarding card, a rationale-aware request, and an "Open settings" fallback after a permanent denial.
+### 🔎 Search
+- **Live autocomplete**: results while you type (debounced, biased towards your location) via **Photon / OpenStreetMap**.
+- **Category chips**: ☕ Coffee, 🍽 Food, ⛽ Fuel, 🏧 ATM, 🏥 Hospital and 🏨 Hotel. These run a true radius search on OpenStreetMap via the **Overpass API** (2 km, widening to 6 and 15 km in quiet areas) and are sorted by distance.
+- **Recents & saved places** on the empty search screen, a shimmering loading skeleton and staggered, animated results.
 
-### 🎨 Theme handling
-- **Three modes**: System, Light and Dark, switched from one animated button (sun, moon and auto icons that morph).
-- **Persisted** with Jetpack **DataStore**, shared across Android and iOS.
-- **Animated transitions**: every UI colour cross-fades, and the **map style switches too** (Positron in light mode, Dark in dark mode).
-- **System bars adapt**, so status-bar icons stay readable in both themes.
+### 🧭 Routing (like Google Maps)
+- **From your location to any destination**: car, bike or walk, powered by the open **Valhalla** routing engine.
+- **Multi-stop trips**: add up to 5 stops, then **reorder** or remove them on a timeline. The route recalculates instantly.
+- **Route summary**: distance, duration and arrival time, plus an expandable list of turn-by-turn steps.
+- **Preferences**: avoid tolls and avoid highways.
+- **Animated route line** that draws itself, and the camera fits the whole trip.
 
-### ✨ Premium look & motion
-- **Animated splash**: the Android 12+ SplashScreen API hands over seamlessly to a Compose intro with a lifting logo, a spinning dashed route ring, a pulsing arrow, a light sweep and a rising wordmark.
-- **Adaptive app icon**: a navigation arrow heading to a waypoint on a dashed route, with a themed (monochrome) icon for Android 13+.
-- **Frosted glass UI** floating over the map, with springy press feedback, rotating search hints, a radar pulse while locating and a live GPS indicator.
-- **Hand-drawn vector glyphs**: every icon is drawn in Compose Canvas, so no icon library is needed and every icon can be animated.
+### 🚗 Turn-by-turn navigation
+- **Live GPS navigation**: your position snaps onto the route, and a tilted camera follows you.
+- **Next-turn banner** with a maneuver arrow and the distance to the turn, plus remaining time, distance and ETA.
+- **Demo drive mode** 🎬 drives the route automatically at 1×, 3× or 6× speed, so you can try navigation from your desk.
+- **Arrival celebration** with confetti, and the trip is saved to your history.
+
+### 📍 Map
+- **MapLibre vector map** with OpenFreeMap tiles: no API key and no billing.
+- **Long-press anywhere** to drop a pin with a bounce animation and haptics. Its address is resolved automatically.
+- **Place card**: get directions, add it as a stop, or ☆ save it.
+- Live location puck, follow mode and fly-to camera animations.
+
+### 👤 Profile
+- **Animated gradient header** with your initials, an editable name and a **navigator level**.
+- **Stats**: trips taken, distance travelled and places saved.
+- **Achievements** 🏆 (First trip, Collector, Explorer, Road warrior, Eco rider…), which unlock with a pop animation.
+- Your saved places and recent trips.
+
+### ⚙️ Settings
+- Theme (Auto / Light / Dark), units (km / miles) and default travel mode.
+- Avoid tolls / highways, and demo drive speed.
+- Clear search history or trip history.
+- About & open-data attribution.
+
+### 🎨 Premium look & motion
+- **Animated splash**: the Android 12+ SplashScreen API hands over to a Compose intro (lifting logo, spinning route ring, light sweep).
+- **Adaptive app icon**, with a themed (monochrome) variant for Android 13+.
+- **Frosted glass UI** with a bottom sheet that morphs between Explore, Place, Planner and Navigation, springy press feedback and slide transitions between screens.
+- Theme changes cross-fade every colour **and the map style**.
+- **Hand-drawn vector glyphs**: every icon is drawn in Compose Canvas.
 
 ## 🛠 Tech Stack
 
@@ -62,8 +92,9 @@ Live location, a vector map and routing, with one shared codebase for Android an
 | Maps | MapLibre Compose + OpenFreeMap vector tiles |
 | Location | MapLibre Compose location APIs (lifecycle-aware, permission handling) |
 | Networking | Ktor client (OkHttp on Android, Darwin on iOS) + kotlinx.serialization |
-| Geocoding | Photon (OpenStreetMap) |
-| Persistence | Jetpack DataStore (Preferences, KMP) |
+| Geocoding & search | Photon (OpenStreetMap), Overpass API for nearby places |
+| Routing | Valhalla (FOSSGIS server), polyline6 decoding, custom route tracker |
+| Persistence | Jetpack DataStore (Preferences, KMP): settings, saved places, recents, trips |
 | Dependency injection | Koin |
 | Architecture | Clean Architecture (domain / data / ui) + MVVM with `StateFlow` |
 | Splash | AndroidX core-splashscreen + Compose intro |
@@ -74,38 +105,47 @@ Live location, a vector map and routing, with one shared codebase for Android an
 
 ```mermaid
 flowchart TD
-    UI["MapScreen<br/>Compose + MapLibre"] --> VM["MapViewModel<br/>StateFlow"]
-    VM --> S["SettingsRepository"]
-    VM --> G["GeocodingRepository"]
-    S -.-> DS[("DataStore")]
-    G -.-> P(["Photon API<br/>via Ktor"])
-    K["Koin"] -.wires.-> VM
+    subgraph UI["ui (Compose Multiplatform)"]
+      MS["MapScreen"] --> MVM["MapViewModel"]
+      SS["SearchScreen"] --> SVM["SearchViewModel"]
+      PS["ProfileScreen"] --> PVM["ProfileViewModel"]
+      ST["SettingsScreen"] --> STVM["SettingsViewModel"]
+    end
+    MVM --> RT["RouteTracker<br/>progress · snapping · next turn"]
+    MVM & SVM & PVM & STVM --> R["Repositories<br/>(domain interfaces)"]
+    R -.-> DS[("DataStore")]
+    R -.-> PH(["Photon API"])
+    R -.-> VA(["Valhalla API"])
+    K["Koin"] -.wires.-> UI
 ```
 
 ```
 shared/src/commonMain/kotlin/com/nijobenny/wayfinder/
 ├── domain/
-│   ├── model/          # Place, ThemeMode
-│   ├── repository/     # SettingsRepository, GeocodingRepository (interfaces)
-│   └── util/           # GeoMath (haversine distance, coordinate formatting)
+│   ├── model/          # Place, Route, Maneuver, TravelMode, UserSettings, TripRecord…
+│   ├── repository/     # Settings, Geocoding, Routing, Places (interfaces)
+│   └── util/           # GeoMath, Polyline decoder, RouteTracker, formatters
 ├── data/
-│   ├── settings/       # DataStore-backed settings
-│   ├── remote/         # Ktor client, Photon API + DTOs
-│   └── repository/     # Photon geocoding with caching
+│   ├── settings/       # DataStore: settings, saved places, recents, trips
+│   ├── remote/         # Ktor client, Photon + Valhalla APIs and DTOs
+│   └── repository/     # Implementations (caching, rate limiting)
 ├── ui/
-│   ├── map/            # Map screen, view model, bottom panel, controls
+│   ├── map/            # Map, sheets (explore/place/planner), markers, navigation UI
+│   ├── search/         # Search screen + view model
+│   ├── profile/        # Profile, stats, achievements
+│   ├── settings/       # Settings screen + view model
 │   ├── splash/         # Animated intro
-│   ├── components/     # Glass panels, logo & glyphs drawn in code, bounce click
+│   ├── components/     # Glass panels, controls, glyphs drawn in code
 │   └── theme/          # Light/dark palettes with animated transitions
 ├── di/                 # Koin modules
-└── platform/           # expect/actual: time, DataStore path, system bars
+└── platform/           # expect/actual: time, DataStore path, system bars, back handler
 ```
 
 ## ✅ Tests
 
-- **ViewModel**: theme cycling and persistence, location throttling (no API spam), error and retry.
-- **Domain**: haversine distance, coordinate formatting, theme mode cycle.
-- **Data**: Photon GeoJSON parsing and fallbacks.
+- **MapViewModel**: multi-stop routing order and reordering, route preferences, a demo drive that arrives and records the trip, back-button layering, location throttling.
+- **Routing math**: polyline decoding (Google reference vector), route progress, GPS snapping, arrival detection, distance and duration formatting.
+- **Data**: Photon GeoJSON parsing and fallbacks; **domain**: haversine distance and the theme cycle.
 
 ```bash
 ./gradlew :shared:allTests
@@ -114,18 +154,19 @@ shared/src/commonMain/kotlin/com/nijobenny/wayfinder/
 ## 🗺 Roadmap
 
 - [x] KMP foundation, Koin, Ktor, DataStore
-- [x] Premium theme system (System / Light / Dark) with animated switching
-- [x] Animated splash + adaptive icon
+- [x] Premium theme system and animated splash + adaptive icon
 - [x] Live map, location puck, follow mode, reverse geocoding
-- [ ] Place search with autocomplete
-- [ ] Route planning (car / bike / walk) with route line, distance and ETA
-- [ ] Turn-by-turn directions and navigation mode
-- [ ] Saved places and trip history
-- [ ] Live trip tracking with a notification
+- [x] Search with autocomplete and nearby categories
+- [x] Multi-stop route planning (car / bike / walk)
+- [x] Turn-by-turn navigation + demo drive
+- [x] Profile, achievements, saved places, trip history, settings
+- [ ] Voice guidance (text-to-speech)
+- [ ] Offline map regions
+- [ ] Live trip notification
 
 ## 🙏 Data & attribution
 
-Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors · Tiles by [OpenFreeMap](https://openfreemap.org) · Geocoding by [Photon](https://photon.komoot.io) · Rendering by [MapLibre](https://maplibre.org)
+Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors · Tiles by [OpenFreeMap](https://openfreemap.org) · Geocoding by [Photon](https://photon.komoot.io) · Nearby places via [Overpass API](https://overpass-api.de) · Routing by [Valhalla](https://github.com/valhalla/valhalla) on the [FOSSGIS](https://www.fossgis.de) server · Rendering by [MapLibre](https://maplibre.org)
 
 ## 👤 Author
 

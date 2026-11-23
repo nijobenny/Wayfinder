@@ -26,3 +26,8 @@ actual fun dataStoreFilePath(): String {
 actual fun SystemBarsEffect(useDarkIcons: Boolean) {
     // Compose Multiplatform on iOS follows the app's appearance automatically.
 }
+
+@Composable
+actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) {
+    // iOS uses on-screen back buttons.
+}
