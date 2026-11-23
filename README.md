@@ -25,17 +25,31 @@ Search, multi-stop routing and turn-by-turn navigation on open map data, with on
 
 ## 📱 Screenshots
 
-| Live map | Nearby search | Place card | Trip planner |
-|:---:|:---:|:---:|:---:|
-| <img src="screenshots/map-light.png" width="190"/> | <img src="screenshots/search-nearby.png" width="190"/> | <img src="screenshots/place-dark.png" width="190"/> | <img src="screenshots/planner.png" width="190"/> |
+### ☀️ Light theme
 
-| Turn-by-turn steps | Navigation (demo drive) | Night navigation | Dark map |
+| Live map | Search | Nearby food | Trip planner |
 |:---:|:---:|:---:|:---:|
-| <img src="screenshots/steps.png" width="190"/> | <img src="screenshots/navigation.png" width="190"/> | <img src="screenshots/navigation-dark.png" width="190"/> | <img src="screenshots/map-dark.png" width="190"/> |
+| <img src="screenshots/light-map.png" width="190"/> | <img src="screenshots/light-search.png" width="190"/> | <img src="screenshots/light-nearby.png" width="190"/> | <img src="screenshots/light-planner.png" width="190"/> |
 
-| Profile & achievements | Profile (light) | Settings | Splash |
+| Turn-by-turn steps | Navigation | Profile | Settings |
 |:---:|:---:|:---:|:---:|
-| <img src="screenshots/profile.png" width="190"/> | <img src="screenshots/profile-light.png" width="190"/> | <img src="screenshots/settings.png" width="190"/> | <img src="screenshots/splash.png" width="190"/> |
+| <img src="screenshots/light-steps.png" width="190"/> | <img src="screenshots/light-navigation.png" width="190"/> | <img src="screenshots/light-profile.png" width="190"/> | <img src="screenshots/light-settings.png" width="190"/> |
+
+### 🌙 Dark theme
+
+| Live map | Search | Place card | Trip planner |
+|:---:|:---:|:---:|:---:|
+| <img src="screenshots/dark-map.png" width="190"/> | <img src="screenshots/dark-search.png" width="190"/> | <img src="screenshots/dark-place.png" width="190"/> | <img src="screenshots/dark-planner.png" width="190"/> |
+
+| Turn-by-turn steps | Navigation | Profile | Settings |
+|:---:|:---:|:---:|:---:|
+| <img src="screenshots/dark-steps.png" width="190"/> | <img src="screenshots/dark-navigation.png" width="190"/> | <img src="screenshots/dark-profile.png" width="190"/> | <img src="screenshots/dark-settings.png" width="190"/> |
+
+### 🚀 Splash & icon
+
+| Splash | App icon |
+|:---:|:---:|
+| <img src="screenshots/splash.png" width="190"/> | <img src="screenshots/icon-512.png" width="190"/> |
 
 ## ✨ Features
 
