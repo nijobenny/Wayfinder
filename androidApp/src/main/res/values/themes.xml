@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Wayfinder" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/wayfinder_splash</item>
+    </style>
+
+    <!-- System splash (Android 12+ API, back-ported by core-splashscreen). -->
+    <style name="Theme.Wayfinder.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/wayfinder_splash</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash</item>
+        <item name="postSplashScreenTheme">@style/Theme.Wayfinder</item>
+    </style>
+</resources>

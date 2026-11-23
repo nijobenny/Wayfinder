@@ -1,0 +1,9 @@
+TEAM_ID=
+
+PRODUCT_NAME=Wayfinder
+PRODUCT_BUNDLE_IDENTIFIER=com.nijobenny.wayfinder.Wayfinder$(TEAM_ID)
+
+CURRENT_PROJECT_VERSION=1
+MARKETING_VERSION=1.0
+// Required by MapLibre Native (via maplibre-compose)
+OTHER_LDFLAGS = $(inherited) -l"c++" -lz -framework CoreFoundation -framework CoreGraphics -framework CoreText -framework Foundation -framework ImageIO -framework Metal -framework QuartzCore
